@@ -14,8 +14,6 @@ import (
 	"resty.dev/v3"
 )
 
-const DefaultTimeout = 800 * time.Millisecond
-
 type Langfuse interface {
 	StartSendingEvents(ctx context.Context, period time.Duration) error
 	Trace(input, output any, options ...TraceOption)
@@ -57,8 +55,6 @@ func (c *langfuseImpl) StartSendingEvents(ctx context.Context, period time.Durat
 }
 
 func (c *langfuseImpl) GetPromptTemplate(ctx context.Context, promptName string) (string, error) {
-	ctx, cancel := context.WithTimeout(ctx, DefaultTimeout)
-	defer cancel()
 	promptObject := ChatPrompt{}
 	resp, err := c.restClient.R().
 		SetContext(ctx).
