@@ -16,13 +16,13 @@ import (
 
 const DefaultTimeout = 800 * time.Millisecond
 
-type Client interface {
+type Langfuse interface {
 	StartSendingEvents(ctx context.Context, period time.Duration) error
 	Trace(input, output any, options ...TraceOption)
 	GetPromptTemplate(ctx context.Context, promptName string) (string, error)
 }
 
-type clientImpl struct {
+type langfuseImpl struct {
 	restClient             *resty.Client
 	eventObserver          observer.Observer[IngestionEvent]
 	eventQueue             observer.Queue[IngestionEvent]
@@ -31,13 +31,13 @@ type clientImpl struct {
 	promptLabel            string
 }
 
-func New(endpoint, publicKey, secretKey string) Client {
+func New(endpoint, publicKey, secretKey string) Langfuse {
 	return NewWithHttpClient(http.DefaultClient, endpoint, publicKey, secretKey)
 }
 
-func NewWithHttpClient(httpClient *http.Client, endpoint, publicKey, secretKey string) Client {
+func NewWithHttpClient(httpClient *http.Client, endpoint, publicKey, secretKey string) Langfuse {
 	client := resty.NewWithClient(httpClient).SetBasicAuth(publicKey, secretKey)
-	c := &clientImpl{
+	c := &langfuseImpl{
 		restClient:  client,
 		eventQueue:  observer.NewQueue[IngestionEvent](),
 		endpoint:    endpoint,
@@ -47,7 +47,7 @@ func NewWithHttpClient(httpClient *http.Client, endpoint, publicKey, secretKey s
 	return c
 }
 
-func (c *clientImpl) StartSendingEvents(ctx context.Context, period time.Duration) error {
+func (c *langfuseImpl) StartSendingEvents(ctx context.Context, period time.Duration) error {
 	if c.isSendingEventsStarted.CompareAndSwap(false, true) {
 		go c.eventObserver.StartObserve(ctx, period)
 		return nil
@@ -56,7 +56,7 @@ func (c *clientImpl) StartSendingEvents(ctx context.Context, period time.Duratio
 	}
 }
 
-func (c *clientImpl) GetPromptTemplate(ctx context.Context, promptName string) (string, error) {
+func (c *langfuseImpl) GetPromptTemplate(ctx context.Context, promptName string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, DefaultTimeout)
 	defer cancel()
 	promptObject := ChatPrompt{}
@@ -82,7 +82,7 @@ func (c *clientImpl) GetPromptTemplate(ctx context.Context, promptName string) (
 	return convertJinjaVariablesToGoTemplate(promptObject.Prompt[0].Content), nil
 }
 
-func (c *clientImpl) Trace(input, output any, options ...TraceOption) {
+func (c *langfuseImpl) Trace(input, output any, options ...TraceOption) {
 	trace := &Trace{
 		Input:  input,
 		Output: output,
@@ -98,7 +98,7 @@ func (c *clientImpl) Trace(input, output any, options ...TraceOption) {
 	})
 }
 
-func (c *clientImpl) sendEvents(ctx context.Context, events []IngestionEvent) error {
+func (c *langfuseImpl) sendEvents(ctx context.Context, events []IngestionEvent) error {
 	i := &Ingestion{
 		Batch: events,
 	}

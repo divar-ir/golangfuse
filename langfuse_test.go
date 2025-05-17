@@ -66,7 +66,7 @@ func (s *ClientTest) TestGetPromptTemplateShouldReturnVariablesWithGolangFormat(
 	}
 }
 
-func (s *ClientTest) getLangfuseClientForTest(promptName, promptContent string) golangfuse.Client {
+func (s *ClientTest) getLangfuseClientForTest(promptName, promptContent string) golangfuse.Langfuse {
 	apiResponse := fmt.Sprintf(`{
   "id" : "id",
   "createdAt" : "2025-05-06T10:48:43.828Z",
@@ -214,7 +214,7 @@ func (s *ClientTest) TestShouldSendEventsInBatch() {
 	s.Require().Len(bodyObj.Batch, 2)
 }
 
-func (s *ClientTest) getClient() golangfuse.Client {
+func (s *ClientTest) getClient() golangfuse.Langfuse {
 	return s.getClientWithMockedHttpTransport(func(req *http.Request) (*http.Response, error) {
 		return &http.Response{
 			StatusCode: http.StatusMultiStatus,
@@ -223,7 +223,7 @@ func (s *ClientTest) getClient() golangfuse.Client {
 	})
 }
 
-func (s *ClientTest) getClientWithMockedHttpTransport(transport httpmock.RoundTripFunc) golangfuse.Client {
+func (s *ClientTest) getClientWithMockedHttpTransport(transport httpmock.RoundTripFunc) golangfuse.Langfuse {
 	return golangfuse.NewWithHttpClient(
 		&http.Client{Transport: transport},
 		"https://test.com",
