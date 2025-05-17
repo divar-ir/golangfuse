@@ -1,4 +1,4 @@
-package langfuse_test
+package golangfuse_test
 
 import (
 	"context"
@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/divar-ir/go-http-mock/pkg/httpmock"
-	"github.com/divar-ir/golangfuse/pkg/langfuse"
+	"github.com/divar-ir/golangfuse"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -66,7 +66,7 @@ func (s *ClientTest) TestGetPromptTemplateShouldReturnVariablesWithGolangFormat(
 	}
 }
 
-func (s *ClientTest) getLangfuseClientForTest(promptName, promptContent string) langfuse.Client {
+func (s *ClientTest) getLangfuseClientForTest(promptName, promptContent string) golangfuse.Client {
 	apiResponse := fmt.Sprintf(`{
   "id" : "id",
   "createdAt" : "2025-05-06T10:48:43.828Z",
@@ -90,7 +90,7 @@ func (s *ClientTest) getLangfuseClientForTest(promptName, promptContent string) 
 	"commitMessage" : null,
 	"resolutionGraph" : null
 }`, promptContent, promptName)
-	return langfuse.NewWithHttpClient(
+	return golangfuse.NewWithHttpClient(
 		httpmock.NewMockClient(http.StatusOK, apiResponse),
 		"https://langfuse3.data.divar.cloud", "pk", "sk")
 }
@@ -214,7 +214,7 @@ func (s *ClientTest) TestShouldSendEventsInBatch() {
 	s.Require().Len(bodyObj.Batch, 2)
 }
 
-func (s *ClientTest) getClient() langfuse.Client {
+func (s *ClientTest) getClient() golangfuse.Client {
 	return s.getClientWithMockedHttpTransport(func(req *http.Request) (*http.Response, error) {
 		return &http.Response{
 			StatusCode: http.StatusMultiStatus,
@@ -223,8 +223,8 @@ func (s *ClientTest) getClient() langfuse.Client {
 	})
 }
 
-func (s *ClientTest) getClientWithMockedHttpTransport(transport httpmock.RoundTripFunc) langfuse.Client {
-	return langfuse.NewWithHttpClient(
+func (s *ClientTest) getClientWithMockedHttpTransport(transport httpmock.RoundTripFunc) golangfuse.Client {
+	return golangfuse.NewWithHttpClient(
 		&http.Client{Transport: transport},
 		"https://test.com",
 		"test-pk",

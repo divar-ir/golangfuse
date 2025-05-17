@@ -1,4 +1,4 @@
-package langfuse
+package golangfuse
 
 import (
 	"context"
@@ -9,9 +9,7 @@ import (
 	"time"
 
 	"github.com/divar-ir/golangfuse/internal/constants"
-	"github.com/divar-ir/golangfuse/internal/models"
 	"github.com/divar-ir/golangfuse/internal/observer"
-	"github.com/divar-ir/golangfuse/pkg/errs"
 	"github.com/google/uuid"
 	"resty.dev/v3"
 )
@@ -20,14 +18,14 @@ const DefaultTimeout = 800 * time.Millisecond
 
 type Client interface {
 	StartSendingEvents(ctx context.Context, period time.Duration) error
-	Trace(input, output any, options ...Option)
+	Trace(input, output any, options ...TraceOption)
 	GetPromptTemplate(ctx context.Context, promptName string) (string, error)
 }
 
 type clientImpl struct {
 	restClient             *resty.Client
-	eventObserver          observer.Observer[models.IngestionEvent]
-	eventQueue             observer.Queue[models.IngestionEvent]
+	eventObserver          observer.Observer[IngestionEvent]
+	eventQueue             observer.Queue[IngestionEvent]
 	isSendingEventsStarted atomic.Bool
 	endpoint               string
 	promptLabel            string
@@ -41,11 +39,11 @@ func NewWithHttpClient(httpClient *http.Client, endpoint, publicKey, secretKey s
 	client := resty.NewWithClient(httpClient).SetBasicAuth(publicKey, secretKey)
 	c := &clientImpl{
 		restClient:  client,
-		eventQueue:  observer.NewQueue[models.IngestionEvent](),
+		eventQueue:  observer.NewQueue[IngestionEvent](),
 		endpoint:    endpoint,
 		promptLabel: "production", // TODO: use option pattern to override this default if needed
 	}
-	c.eventObserver = observer.NewObserver[models.IngestionEvent](c.eventQueue, c.sendEvents)
+	c.eventObserver = observer.NewObserver[IngestionEvent](c.eventQueue, c.sendEvents)
 	return c
 }
 
@@ -54,14 +52,14 @@ func (c *clientImpl) StartSendingEvents(ctx context.Context, period time.Duratio
 		go c.eventObserver.StartObserve(ctx, period)
 		return nil
 	} else {
-		return errs.AlreadyStartedErr
+		return AlreadyStartedErr
 	}
 }
 
 func (c *clientImpl) GetPromptTemplate(ctx context.Context, promptName string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, DefaultTimeout)
 	defer cancel()
-	promptObject := models.ChatPrompt{}
+	promptObject := ChatPrompt{}
 	resp, err := c.restClient.R().
 		SetContext(ctx).
 		SetResult(&promptObject).
@@ -84,15 +82,15 @@ func (c *clientImpl) GetPromptTemplate(ctx context.Context, promptName string) (
 	return convertJinjaVariablesToGoTemplate(promptObject.Prompt[0].Content), nil
 }
 
-func (c *clientImpl) Trace(input, output any, options ...Option) {
-	trace := &models.Trace{
+func (c *clientImpl) Trace(input, output any, options ...TraceOption) {
+	trace := &Trace{
 		Input:  input,
 		Output: output,
 	}
 	for _, opt := range options {
 		opt(trace)
 	}
-	c.eventQueue.Enqueue(models.IngestionEvent{
+	c.eventQueue.Enqueue(IngestionEvent{
 		ID:        uuid.NewString(),
 		Timestamp: time.Now(),
 		Type:      constants.IngestionEventTypeTraceCreate,
@@ -100,8 +98,8 @@ func (c *clientImpl) Trace(input, output any, options ...Option) {
 	})
 }
 
-func (c *clientImpl) sendEvents(ctx context.Context, events []models.IngestionEvent) error {
-	i := &models.Ingestion{
+func (c *clientImpl) sendEvents(ctx context.Context, events []IngestionEvent) error {
+	i := &Ingestion{
 		Batch: events,
 	}
 	resp, err := c.restClient.R().SetContext(ctx).SetBody(i).

@@ -1,4 +1,4 @@
-package errs
+package golangfuse
 
 import "errors"
 
