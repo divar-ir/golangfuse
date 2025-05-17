@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"regexp"
 	"sync/atomic"
 	"time"
 
@@ -17,7 +16,7 @@ import (
 type Langfuse interface {
 	StartSendingEvents(ctx context.Context, period time.Duration) error
 	Trace(input, output any, options ...TraceOption)
-	GetPromptTemplate(ctx context.Context, promptName string) (string, error)
+	GetSystemPromptTemplate(ctx context.Context, promptName string) (string, error)
 }
 
 type langfuseImpl struct {
@@ -54,7 +53,7 @@ func (c *langfuseImpl) StartSendingEvents(ctx context.Context, period time.Durat
 	}
 }
 
-func (c *langfuseImpl) GetPromptTemplate(ctx context.Context, promptName string) (string, error) {
+func (c *langfuseImpl) GetSystemPromptTemplate(ctx context.Context, promptName string) (string, error) {
 	promptObject := ChatPrompt{}
 	resp, err := c.restClient.R().
 		SetContext(ctx).
@@ -75,7 +74,7 @@ func (c *langfuseImpl) GetPromptTemplate(ctx context.Context, promptName string)
 	if promptObject.Prompt[0].Role != "system" {
 		return "", fmt.Errorf("prompt role is not system")
 	}
-	return convertJinjaVariablesToGoTemplate(promptObject.Prompt[0].Content), nil
+	return promptObject.Prompt[0].Content, nil
 }
 
 func (c *langfuseImpl) Trace(input, output any, options ...TraceOption) {
@@ -107,9 +106,4 @@ func (c *langfuseImpl) sendEvents(ctx context.Context, events []IngestionEvent) 
 		return fmt.Errorf("failed to send ingestion (status = %d): %s", resp.StatusCode(), resp.String())
 	}
 	return nil
-}
-
-func convertJinjaVariablesToGoTemplate(prompt string) string {
-	re := regexp.MustCompile(`\{\{\s*([a-zA-Z0-9_]+)\s*\}\}`)
-	return re.ReplaceAllString(prompt, "{{.$1}}")
 }
