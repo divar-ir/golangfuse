@@ -38,32 +38,9 @@ func (s *ClientTest) TestGetPromptTemplateShouldParseApiResponse() {
 	c := s.getLangfuseClientForTest(promptName, "This is system prompt")
 
 	// When
-	promptTemplate, err := c.GetPromptTemplate(s.ctx, promptName)
+	promptTemplate, err := c.GetSystemPromptTemplate(s.ctx, promptName)
 	s.Require().NoError(err)
 	s.Require().Equal("This is system prompt", promptTemplate)
-}
-
-func (s *ClientTest) TestGetPromptTemplateShouldReturnVariablesWithGolangFormat() {
-	// Given
-	const promptName = "test-prompt"
-	jinjaVarialbeVariants := []string{
-		"{{myVar}}",
-		"{{myVar }}",
-		"{{ myVar}}",
-		"{{ myVar }}",
-	}
-
-	for _, v := range jinjaVarialbeVariants {
-		c := s.getLangfuseClientForTest(promptName,
-			fmt.Sprintf("This is system prompt %s variable.", v))
-
-		// When
-		promptTemplate, err := c.GetPromptTemplate(s.ctx, promptName)
-
-		// Then
-		s.Require().NoError(err)
-		s.Require().Equal("This is system prompt {{.myVar}} variable.", promptTemplate)
-	}
 }
 
 func (s *ClientTest) getLangfuseClientForTest(promptName, promptContent string) golangfuse.Langfuse {
@@ -104,7 +81,7 @@ func (s *ClientTest) TestShouldSetBasicAuth() {
 	})
 
 	// When
-	_, err := c.GetPromptTemplate(s.ctx, "test-prompt")
+	_, err := c.GetSystemPromptTemplate(s.ctx, "test-prompt")
 	s.Require().ErrorContains(err, "http mock called")
 
 	// Then

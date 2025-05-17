@@ -4,12 +4,10 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"regexp"
 	"sync/atomic"
 	"time"
 
 	"github.com/divar-ir/golangfuse/internal/constants"
-	"github.com/divar-ir/golangfuse/internal/observer"
 	"github.com/google/uuid"
 	"resty.dev/v3"
 )
@@ -17,13 +15,12 @@ import (
 type Langfuse interface {
 	StartSendingEvents(ctx context.Context, period time.Duration) error
 	Trace(input, output any, options ...TraceOption)
-	GetPromptTemplate(ctx context.Context, promptName string) (string, error)
+	GetSystemPromptTemplate(ctx context.Context, promptName string) (string, error)
 }
 
 type langfuseImpl struct {
 	restClient             *resty.Client
-	eventObserver          observer.Observer[IngestionEvent]
-	eventQueue             observer.Queue[IngestionEvent]
+	eventBuffer            *eventBuffer
 	isSendingEventsStarted atomic.Bool
 	endpoint               string
 	promptLabel            string
@@ -37,24 +34,23 @@ func NewWithHttpClient(httpClient *http.Client, endpoint, publicKey, secretKey s
 	client := resty.NewWithClient(httpClient).SetBasicAuth(publicKey, secretKey)
 	c := &langfuseImpl{
 		restClient:  client,
-		eventQueue:  observer.NewQueue[IngestionEvent](),
 		endpoint:    endpoint,
 		promptLabel: "production", // TODO: use option pattern to override this default if needed
 	}
-	c.eventObserver = observer.NewObserver[IngestionEvent](c.eventQueue, c.sendEvents)
+	c.eventBuffer = newEventBufferer(c.sendEvents)
 	return c
 }
 
 func (c *langfuseImpl) StartSendingEvents(ctx context.Context, period time.Duration) error {
 	if c.isSendingEventsStarted.CompareAndSwap(false, true) {
-		go c.eventObserver.StartObserve(ctx, period)
+		go c.eventBuffer.Start(ctx, period)
 		return nil
 	} else {
 		return AlreadyStartedErr
 	}
 }
 
-func (c *langfuseImpl) GetPromptTemplate(ctx context.Context, promptName string) (string, error) {
+func (c *langfuseImpl) GetSystemPromptTemplate(ctx context.Context, promptName string) (string, error) {
 	promptObject := ChatPrompt{}
 	resp, err := c.restClient.R().
 		SetContext(ctx).
@@ -75,7 +71,7 @@ func (c *langfuseImpl) GetPromptTemplate(ctx context.Context, promptName string)
 	if promptObject.Prompt[0].Role != "system" {
 		return "", fmt.Errorf("prompt role is not system")
 	}
-	return convertJinjaVariablesToGoTemplate(promptObject.Prompt[0].Content), nil
+	return promptObject.Prompt[0].Content, nil
 }
 
 func (c *langfuseImpl) Trace(input, output any, options ...TraceOption) {
@@ -86,7 +82,7 @@ func (c *langfuseImpl) Trace(input, output any, options ...TraceOption) {
 	for _, opt := range options {
 		opt(trace)
 	}
-	c.eventQueue.Enqueue(IngestionEvent{
+	c.eventBuffer.Add(IngestionEvent{
 		ID:        uuid.NewString(),
 		Timestamp: time.Now(),
 		Type:      constants.IngestionEventTypeTraceCreate,
@@ -107,9 +103,4 @@ func (c *langfuseImpl) sendEvents(ctx context.Context, events []IngestionEvent) 
 		return fmt.Errorf("failed to send ingestion (status = %d): %s", resp.StatusCode(), resp.String())
 	}
 	return nil
-}
-
-func convertJinjaVariablesToGoTemplate(prompt string) string {
-	re := regexp.MustCompile(`\{\{\s*([a-zA-Z0-9_]+)\s*\}\}`)
-	return re.ReplaceAllString(prompt, "{{.$1}}")
 }
