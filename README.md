@@ -1,6 +1,6 @@
 # Golangfuse
 
-A Go client for the [Langfuse](https://langfuse.com/) API, enabling prompt management and observability for LLM applications.
+A Go SDK for [Langfuse](https://langfuse.com/), enabling prompt management and observability for LLM applications.
 
 ## Features
 
