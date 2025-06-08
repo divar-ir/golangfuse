@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
+	"strings"
 	"time"
 
 	"resty.dev/v3"
@@ -29,6 +30,7 @@ func New(endpoint, publicKey, secretKey string) LangfuseClient {
 func NewWithHttpClient(httpClient *http.Client, endpoint, publicKey, secretKey string) LangfuseClient {
 	client := resty.NewWithClient(httpClient).
 		SetBasicAuth(publicKey, secretKey)
+	endpoint = strings.TrimSuffix(endpoint, "/")
 	return &langfuseClient{
 		restClient:  client,
 		endpoint:    endpoint,
