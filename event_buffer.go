@@ -1,0 +1,59 @@
+package golangfuse
+
+import (
+	"context"
+	"sync"
+	"time"
+
+	"github.com/sirupsen/logrus"
+)
+
+type FlushHandlerFunc func(ctx context.Context, events []IngestionEvent) error
+
+type eventBuffer struct {
+	bufferedEvents []IngestionEvent
+	mu             sync.Mutex
+	flushHandler   FlushHandlerFunc
+}
+
+func newEventBufferer(flushHandler FlushHandlerFunc) *eventBuffer {
+	return &eventBuffer{flushHandler: flushHandler}
+}
+
+func (i *eventBuffer) Start(ctx context.Context, period time.Duration) {
+	ticker := time.NewTicker(period)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			err := i.Flush(ctx)
+			if err != nil {
+				logrus.WithError(err).Error("golangfuse: error flushing events")
+			}
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+func (i *eventBuffer) Add(event IngestionEvent) {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	i.bufferedEvents = append(i.bufferedEvents, event)
+}
+
+func (i *eventBuffer) Flush(ctx context.Context) error {
+	i.mu.Lock()
+	items := i.bufferedEvents
+	i.bufferedEvents = nil
+	i.mu.Unlock()
+	if len(items) > 0 {
+		err := i.flushHandler(ctx, items)
+		if err != nil {
+			return err
+		} else {
+			logrus.Tracef("golangfuse: flushed %d events", len(items))
+		}
+	}
+	return nil
+}
