@@ -209,6 +209,92 @@ func (s *ClientTest) getClientWithMockedHttpTransport(transport httpmock.RoundTr
 	)
 }
 
+func (s *ClientTest) TestShutdownShouldReturnErrorWhenAlreadyShutdown() {
+	// Given
+	c := s.getClient()
+	err := c.StartSendingEvents(s.ctx, 1*time.Microsecond)
+	s.Require().NoError(err)
+	err = c.Shutdown(s.ctx)
+	s.Require().NoError(err)
+
+	// When
+	err = c.Shutdown(s.ctx)
+
+	// Then
+	s.Require().ErrorContains(err, "already shutdown")
+}
+
+func (s *ClientTest) TestShutdownShouldSucceedAfterStart() {
+	// Given
+	c := s.getClient()
+	err := c.StartSendingEvents(s.ctx, 1*time.Microsecond)
+	s.Require().NoError(err)
+
+	// When
+	err = c.Shutdown(s.ctx)
+
+	// Then
+	s.Require().NoError(err)
+}
+
+func (s *ClientTest) TestShutdownShouldFlushPendingEvents() {
+	// Given
+	var sentRequestBody []byte
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+	c := s.getClientWithMockedHttpTransport(func(req *http.Request) (*http.Response, error) {
+		defer wg.Done()
+		body, err := io.ReadAll(req.Body)
+		if err != nil {
+			return nil, err
+		}
+		sentRequestBody = body
+		return &http.Response{
+			StatusCode: http.StatusMultiStatus,
+			Body:       io.NopCloser(strings.NewReader("{}")),
+		}, nil
+	})
+	err := c.StartSendingEvents(s.ctx, 1*time.Hour) // Long period to prevent automatic Flush
+	s.Require().NoError(err)
+
+	// When
+	c.Trace("input", "output")
+	err = c.Shutdown(s.ctx)
+	s.Require().NoError(err)
+	wg.Wait()
+
+	// Then
+	type requestBody struct {
+		Batch []struct {
+			Body struct {
+				Input  string `json:"input"`
+				Output string `json:"output"`
+			}
+		} `json:"batch"`
+	}
+	bodyObj := requestBody{}
+	err = json.Unmarshal(sentRequestBody, &bodyObj)
+	s.Require().NoError(err)
+	s.Require().Len(bodyObj.Batch, 1)
+	s.Require().Equal("input", bodyObj.Batch[0].Body.Input)
+	s.Require().Equal("output", bodyObj.Batch[0].Body.Output)
+}
+
+func (s *ClientTest) TestStartSendingEventsShouldReturnErrorAfterShutdown() {
+	// Given
+	c := s.getClient()
+	err := c.StartSendingEvents(s.ctx, 1*time.Microsecond)
+	s.Require().NoError(err)
+	err = c.Shutdown(s.ctx)
+	s.Require().NoError(err)
+
+	// When
+	err = c.StartSendingEvents(s.ctx, 1*time.Microsecond)
+
+	// Then
+	s.Require().ErrorContains(err, "already shutdown")
+}
+
 func TestLangfuseClient(t *testing.T) {
 	suite.Run(t, new(ClientTest))
 }

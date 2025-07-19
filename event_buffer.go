@@ -26,7 +26,7 @@ func (i *eventBuffer) Start(ctx context.Context, period time.Duration) {
 	for {
 		select {
 		case <-ticker.C:
-			i.flush(ctx)
+			i.Flush(ctx)
 		case <-ctx.Done():
 			return
 		}
@@ -39,7 +39,7 @@ func (i *eventBuffer) Add(event IngestionEvent) {
 	i.bufferedEvents = append(i.bufferedEvents, event)
 }
 
-func (i *eventBuffer) flush(ctx context.Context) {
+func (i *eventBuffer) Flush(ctx context.Context) {
 	i.mu.Lock()
 	items := i.bufferedEvents
 	i.bufferedEvents = nil

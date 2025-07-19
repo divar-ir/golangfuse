@@ -14,6 +14,9 @@ import (
 
 type Langfuse interface {
 	StartSendingEvents(ctx context.Context, period time.Duration) error
+	// Shutdown stops the event buffer and cleans up resources.
+	// It also ensures that any pending events are sent before shutdown.
+	Shutdown(ctx context.Context) error
 	Trace(input, output any, options ...TraceOption)
 	GetSystemPromptTemplate(ctx context.Context, promptName string) (string, error)
 }
@@ -22,6 +25,8 @@ type langfuseImpl struct {
 	restClient             *resty.Client
 	eventBuffer            *eventBuffer
 	isSendingEventsStarted atomic.Bool
+	isShutdown             atomic.Bool
+	cancelFunc             context.CancelFunc
 	endpoint               string
 	promptLabel            string
 }
@@ -42,11 +47,36 @@ func NewWithHttpClient(httpClient *http.Client, endpoint, publicKey, secretKey s
 }
 
 func (c *langfuseImpl) StartSendingEvents(ctx context.Context, period time.Duration) error {
+	if c.isShutdown.Load() {
+		return AlreadyShutdownErr
+	}
 	if c.isSendingEventsStarted.CompareAndSwap(false, true) {
+		ctx, cancel := context.WithCancel(ctx)
+		c.cancelFunc = cancel
 		go c.eventBuffer.Start(ctx, period)
 		return nil
 	} else {
 		return AlreadyStartedErr
+	}
+}
+
+func (c *langfuseImpl) Shutdown(ctx context.Context) error {
+	// Check if already shutdown
+	if c.isShutdown.CompareAndSwap(false, true) {
+		// Check if events were started
+		if !c.isSendingEventsStarted.Load() {
+			return nil
+		}
+
+		// Cancel the event buffer goroutine
+		c.cancelFunc()
+
+		// Flush any remaining events before shutdown
+		c.eventBuffer.Flush(ctx)
+
+		return nil
+	} else {
+		return AlreadyShutdownErr
 	}
 }
 
