@@ -3,7 +3,6 @@ package golangfuse
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"sync/atomic"
 	"time"
 
@@ -13,7 +12,6 @@ import (
 )
 
 type Langfuse interface {
-	StartSendingEvents(ctx context.Context, period time.Duration) error
 	// Shutdown stops the event buffer and cleans up resources.
 	// It also ensures that any pending events are sent before shutdown.
 	Shutdown(ctx context.Context) error
@@ -22,52 +20,46 @@ type Langfuse interface {
 }
 
 type langfuseImpl struct {
-	restClient             *resty.Client
-	eventBuffer            *eventBuffer
-	isSendingEventsStarted atomic.Bool
-	isShutdown             atomic.Bool
-	cancelFunc             context.CancelFunc
-	endpoint               string
-	promptLabel            string
+	restClient  *resty.Client
+	eventBuffer *eventBuffer
+	isShutdown  atomic.Bool
+	cancelFunc  context.CancelFunc
+	endpoint    string
+	promptLabel string
+	flushPeriod time.Duration
 }
 
-func New(endpoint, publicKey, secretKey string) Langfuse {
-	return NewWithHttpClient(http.DefaultClient, endpoint, publicKey, secretKey)
-}
-
-func NewWithHttpClient(httpClient *http.Client, endpoint, publicKey, secretKey string) Langfuse {
-	client := resty.NewWithClient(httpClient).SetBasicAuth(publicKey, secretKey)
+func New(
+	ctx context.Context,
+	endpoint,
+	publicKey,
+	secretKey string,
+	opts ...Option,
+) Langfuse {
 	c := &langfuseImpl{
-		restClient:  client,
+		restClient:  resty.New(),
 		endpoint:    endpoint,
-		promptLabel: "production", // TODO: use option pattern to override this default if needed
+		promptLabel: "production",
+		flushPeriod: 1 * time.Second,
 	}
+	for _, opt := range opts {
+		opt(c)
+	}
+	c.restClient = c.restClient.SetBasicAuth(publicKey, secretKey)
 	c.eventBuffer = newEventBufferer(c.sendEvents)
+	c.startSendingEvents(ctx, c.flushPeriod)
 	return c
 }
 
-func (c *langfuseImpl) StartSendingEvents(ctx context.Context, period time.Duration) error {
-	if c.isShutdown.Load() {
-		return AlreadyShutdownErr
-	}
-	if c.isSendingEventsStarted.CompareAndSwap(false, true) {
-		ctx, cancel := context.WithCancel(ctx)
-		c.cancelFunc = cancel
-		go c.eventBuffer.Start(ctx, period)
-		return nil
-	} else {
-		return AlreadyStartedErr
-	}
+func (c *langfuseImpl) startSendingEvents(ctx context.Context, period time.Duration) {
+	ctx, cancel := context.WithCancel(ctx)
+	c.cancelFunc = cancel
+	go c.eventBuffer.Start(ctx, period)
 }
 
 func (c *langfuseImpl) Shutdown(ctx context.Context) error {
 	// Check if already shutdown
 	if c.isShutdown.CompareAndSwap(false, true) {
-		// Check if events were started
-		if !c.isSendingEventsStarted.Load() {
-			return nil
-		}
-
 		// Cancel the event buffer goroutine
 		c.cancelFunc()
 

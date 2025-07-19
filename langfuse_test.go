@@ -67,9 +67,8 @@ func (s *ClientTest) getLangfuseClientForTest(promptName, promptContent string) 
 	"commitMessage" : null,
 	"resolutionGraph" : null
 }`, promptContent, promptName)
-	return golangfuse.NewWithHttpClient(
-		httpmock.NewMockClient(http.StatusOK, apiResponse),
-		"https://langfuse3.data.divar.cloud", "pk", "sk")
+	return golangfuse.New(s.ctx, "https://langfuse3.data.divar.cloud", "pk", "sk",
+		golangfuse.WithHTTPClient(httpmock.NewMockClient(http.StatusOK, apiResponse)))
 }
 
 func (s *ClientTest) TestShouldSetBasicAuth() {
@@ -91,19 +90,6 @@ func (s *ClientTest) TestShouldSetBasicAuth() {
 	)
 }
 
-func (s *ClientTest) TestStartSendingShouldReturnErrorIfAlreadyStarted() {
-	// Given
-	c := s.getClient()
-	err := c.StartSendingEvents(s.ctx, 1*time.Microsecond)
-	s.Require().NoError(err)
-
-	// When
-	err = c.StartSendingEvents(s.ctx, 1*time.Microsecond)
-
-	// Then
-	s.Require().ErrorContains(err, "already started")
-}
-
 func (s *ClientTest) TestShouldSendEvent() {
 	// Given
 	var sentRequestBody []byte
@@ -118,8 +104,6 @@ func (s *ClientTest) TestShouldSendEvent() {
 		sentRequestBody = body
 		return &http.Response{}, nil
 	})
-	err := c.StartSendingEvents(s.ctx, 1*time.Microsecond)
-	s.Require().NoError(err)
 
 	// When
 	c.Trace("input", "output")
@@ -135,7 +119,7 @@ func (s *ClientTest) TestShouldSendEvent() {
 		} `json:"batch"`
 	}
 	bodyObj := requestBody{}
-	err = json.Unmarshal(sentRequestBody, &bodyObj)
+	err := json.Unmarshal(sentRequestBody, &bodyObj)
 	s.Require().NoError(err)
 	s.Require().Len(bodyObj.Batch, 1)
 	s.Require().Equal("input", bodyObj.Batch[0].Body.Input)
@@ -145,15 +129,13 @@ func (s *ClientTest) TestShouldSendEvent() {
 func (s *ClientTest) TestShouldNotSendAnythingWhenNoEventIsReported() {
 	// Given
 	httpCallHappened := false
-	c := s.getClientWithMockedHttpTransport(func(req *http.Request) (*http.Response, error) {
+	s.getClientWithMockedHttpTransport(func(req *http.Request) (*http.Response, error) {
 		httpCallHappened = true
 		return &http.Response{}, nil
 	})
 
 	// When
-	err := c.StartSendingEvents(s.ctx, 1*time.Microsecond)
-	s.Require().NoError(err)
-	time.Sleep(1 * time.Millisecond)
+	time.Sleep(2 * time.Millisecond)
 
 	// Then
 	s.Require().False(httpCallHappened, "http call happened, unexpectedly")
@@ -173,8 +155,6 @@ func (s *ClientTest) TestShouldSendEventsInBatch() {
 		sentRequestBody = body
 		return &http.Response{}, nil
 	})
-	err := c.StartSendingEvents(s.ctx, 1*time.Microsecond)
-	s.Require().NoError(err)
 
 	// When
 	c.Trace("input", "output")
@@ -186,7 +166,7 @@ func (s *ClientTest) TestShouldSendEventsInBatch() {
 		Batch []struct{} `json:"batch"`
 	}
 	bodyObj := requestBody{}
-	err = json.Unmarshal(sentRequestBody, &bodyObj)
+	err := json.Unmarshal(sentRequestBody, &bodyObj)
 	s.Require().NoError(err)
 	s.Require().Len(bodyObj.Batch, 2)
 }
@@ -200,21 +180,24 @@ func (s *ClientTest) getClient() golangfuse.Langfuse {
 	})
 }
 
-func (s *ClientTest) getClientWithMockedHttpTransport(transport httpmock.RoundTripFunc) golangfuse.Langfuse {
-	return golangfuse.NewWithHttpClient(
-		&http.Client{Transport: transport},
+func (s *ClientTest) getClientWithMockedHttpTransport(
+	transport httpmock.RoundTripFunc,
+	opts ...golangfuse.Option,
+) golangfuse.Langfuse {
+	opts = append(opts, golangfuse.WithHTTPClient(&http.Client{Transport: transport}))
+	return golangfuse.New(
+		s.ctx,
 		"https://test.com",
 		"test-pk",
 		"test-sk",
+		opts...,
 	)
 }
 
 func (s *ClientTest) TestShutdownShouldReturnErrorWhenAlreadyShutdown() {
 	// Given
 	c := s.getClient()
-	err := c.StartSendingEvents(s.ctx, 1*time.Microsecond)
-	s.Require().NoError(err)
-	err = c.Shutdown(s.ctx)
+	err := c.Shutdown(s.ctx)
 	s.Require().NoError(err)
 
 	// When
@@ -224,14 +207,12 @@ func (s *ClientTest) TestShutdownShouldReturnErrorWhenAlreadyShutdown() {
 	s.Require().ErrorContains(err, "already shutdown")
 }
 
-func (s *ClientTest) TestShutdownShouldSucceedAfterStart() {
+func (s *ClientTest) TestShutdownShouldSucceedInHappyPath() {
 	// Given
 	c := s.getClient()
-	err := c.StartSendingEvents(s.ctx, 1*time.Microsecond)
-	s.Require().NoError(err)
 
 	// When
-	err = c.Shutdown(s.ctx)
+	err := c.Shutdown(s.ctx)
 
 	// Then
 	s.Require().NoError(err)
@@ -253,13 +234,13 @@ func (s *ClientTest) TestShutdownShouldFlushPendingEvents() {
 			StatusCode: http.StatusMultiStatus,
 			Body:       io.NopCloser(strings.NewReader("{}")),
 		}, nil
-	})
-	err := c.StartSendingEvents(s.ctx, 1*time.Hour) // Long period to prevent automatic Flush
-	s.Require().NoError(err)
+	},
+		golangfuse.WithFlushPeriod(1*time.Hour), // Long period to prevent automatic Flush
+	)
 
 	// When
 	c.Trace("input", "output")
-	err = c.Shutdown(s.ctx)
+	err := c.Shutdown(s.ctx)
 	s.Require().NoError(err)
 	wg.Wait()
 
@@ -278,21 +259,6 @@ func (s *ClientTest) TestShutdownShouldFlushPendingEvents() {
 	s.Require().Len(bodyObj.Batch, 1)
 	s.Require().Equal("input", bodyObj.Batch[0].Body.Input)
 	s.Require().Equal("output", bodyObj.Batch[0].Body.Output)
-}
-
-func (s *ClientTest) TestStartSendingEventsShouldReturnErrorAfterShutdown() {
-	// Given
-	c := s.getClient()
-	err := c.StartSendingEvents(s.ctx, 1*time.Microsecond)
-	s.Require().NoError(err)
-	err = c.Shutdown(s.ctx)
-	s.Require().NoError(err)
-
-	// When
-	err = c.StartSendingEvents(s.ctx, 1*time.Microsecond)
-
-	// Then
-	s.Require().ErrorContains(err, "already shutdown")
 }
 
 func TestLangfuseClient(t *testing.T) {
