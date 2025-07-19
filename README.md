@@ -20,22 +20,20 @@ go get github.com/divar-ir/golangfuse
 ```go
 import "github.com/divar-ir/golangfuse/pkg/langfuse"
 
-client := langfuse.New(
-"https://your-langfuse-instance.com",
-"your-public-key",
-"your-secret-key",
-)
 ctx := context.Background()
-err := client.StartSendingEvents(ctx, 5*time.Second)
-if err != nil {
-    // handle error
-}
+client := langfuse.New(
+	ctx,
+    "https://your-langfuse-instance.com",
+    "your-public-key",
+    "your-secret-key",
+)
 
 // Get a prompt template
 promptTemplate, err := client.GetPromptTemplate(ctx, "your-prompt-name")
 
 // Call LLM API and get the response
 // ...
+// Log the trace
 client.Trace("user input", "model output")
 ```
 
