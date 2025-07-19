@@ -26,7 +26,10 @@ func (i *eventBuffer) Start(ctx context.Context, period time.Duration) {
 	for {
 		select {
 		case <-ticker.C:
-			i.Flush(ctx)
+			err := i.Flush(ctx)
+			if err != nil {
+				logrus.WithError(err).Error("golangfuse: error flushing events")
+			}
 		case <-ctx.Done():
 			return
 		}
@@ -39,7 +42,7 @@ func (i *eventBuffer) Add(event IngestionEvent) {
 	i.bufferedEvents = append(i.bufferedEvents, event)
 }
 
-func (i *eventBuffer) Flush(ctx context.Context) {
+func (i *eventBuffer) Flush(ctx context.Context) error {
 	i.mu.Lock()
 	items := i.bufferedEvents
 	i.bufferedEvents = nil
@@ -47,9 +50,10 @@ func (i *eventBuffer) Flush(ctx context.Context) {
 	if len(items) > 0 {
 		err := i.flushHandler(ctx, items)
 		if err != nil {
-			logrus.WithError(err).Error("golangfuse: error in event flush handler")
+			return err
 		} else {
 			logrus.Tracef("golangfuse: flushed %d events", len(items))
 		}
 	}
+	return nil
 }

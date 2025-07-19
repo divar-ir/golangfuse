@@ -63,9 +63,7 @@ func (c *langfuseImpl) Shutdown(ctx context.Context) error {
 		c.cancelFunc()
 
 		// Flush any remaining events before shutdown
-		c.eventBuffer.Flush(ctx)
-
-		return nil
+		return c.eventBuffer.Flush(ctx)
 	} else {
 		return AlreadyShutdownErr
 	}
