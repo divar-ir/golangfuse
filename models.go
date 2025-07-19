@@ -2,8 +2,6 @@ package golangfuse
 
 import (
 	"time"
-
-	"github.com/divar-ir/golangfuse/internal/constants"
 )
 
 type Trace struct {
@@ -26,10 +24,10 @@ type Ingestion struct {
 }
 
 type IngestionEvent struct {
-	ID        string                       `json:"id"`
-	Timestamp time.Time                    `json:"timestamp"`
-	Type      constants.IngestionEventType `json:"type"`
-	Body      any                          `json:"body"`
+	ID        string             `json:"id"`
+	Timestamp time.Time          `json:"timestamp"`
+	Type      IngestionEventType `json:"type"`
+	Body      any                `json:"body"`
 }
 
 type PromptItem struct {

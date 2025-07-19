@@ -6,7 +6,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/divar-ir/golangfuse/internal/constants"
 	"github.com/google/uuid"
 	"resty.dev/v3"
 )
@@ -107,7 +106,7 @@ func (c *langfuseImpl) Trace(input, output any, options ...TraceOption) {
 	c.eventBuffer.Add(IngestionEvent{
 		ID:        uuid.NewString(),
 		Timestamp: time.Now(),
-		Type:      constants.IngestionEventTypeTraceCreate,
+		Type:      IngestionEventTypeTraceCreate,
 		Body:      trace,
 	})
 }

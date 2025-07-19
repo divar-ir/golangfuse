@@ -1,4 +1,4 @@
-package constants
+package golangfuse
 
 type IngestionEventType string
 
