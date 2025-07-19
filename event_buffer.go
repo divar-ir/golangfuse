@@ -8,15 +8,15 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-type EventsFlushFunc func(ctx context.Context, events []IngestionEvent) error
+type FlushHandlerFunc func(ctx context.Context, events []IngestionEvent) error
 
 type eventBuffer struct {
 	bufferedEvents []IngestionEvent
 	mu             sync.Mutex
-	flushHandler   EventsFlushFunc
+	flushHandler   FlushHandlerFunc
 }
 
-func newEventBufferer(flushHandler EventsFlushFunc) *eventBuffer {
+func newEventBufferer(flushHandler FlushHandlerFunc) *eventBuffer {
 	return &eventBuffer{flushHandler: flushHandler}
 }
 
